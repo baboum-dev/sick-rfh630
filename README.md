@@ -1,23 +1,25 @@
-import ndef
+USAGE SAMPLE:
 
-HOST = '192.168.0.100'
-PORT = 2111
+    import ndef
 
-rf = SickRFH630.RFH630(HOST, PORT)
+    HOST = '192.168.0.100'
+    PORT = 2111
 
-inv = rf.getInventory()
+    rf = SickRFH630.RFH630(HOST, PORT)
 
-content = 'My Payload content'
-external_record = (ndef.TNF_EXTERNAL,   six.b('baboum.be:tag'),  six.b(''), six.b(content)                       ) ##LEN = 174
+    inv = rf.getInventory()
 
-url_record =  (ndef.TNF_WELL_KNOWN, ndef.RTD_URI,               six.b(''), six.int2byte(4)+six.b('baboum.be')   )
+    content = 'My Payload content'
+    external_record = (ndef.TNF_EXTERNAL,   six.b('baboum.be:tag'),  six.b(''), six.b(content)                       ) ##LEN = 174
 
-text_message = ndef.new_message(external_record, url_record)
+    url_record =  (ndef.TNF_WELL_KNOWN, ndef.RTD_URI,               six.b(''), six.int2byte(4)+six.b('baboum.be')   )
 
-payload = text_message.to_buffer()
+    text_message = ndef.new_message(external_record, url_record)
+
+    payload = text_message.to_buffer()
 
 
-for tag in inv:
+    for tag in inv:
     
     if rf.writeNdefTag(tag['serial'], payload):
         logger.info("Writed successfully")
