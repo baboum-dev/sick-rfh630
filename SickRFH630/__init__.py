@@ -1,0 +1,1 @@
+from .rfh630 import RFH630, RFH630Manager
