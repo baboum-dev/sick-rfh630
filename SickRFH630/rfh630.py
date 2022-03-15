@@ -109,11 +109,11 @@ class RFH630():
         return tags
 
     def readInput(self, index=1):
-        msg = self.send_command('sMN mDIReadInput %s' % (index) )
+        msg = self.sendCmd('sMN mDIReadInput %s' % (index) )
         return "sAN mDIReadInput 1" in msg
 
     def setOutput(self, OutputIndex, OutputValue):
-        return self.send_command('sMN mDOSetOutput %s %s' % (OutputIndex, OutputValue))        
+        return self.sendCmd('sMN mDOSetOutput %s %s' % (OutputIndex, OutputValue))        
 
     def readTag(self, serial_number):
         serial = ' '.join(serial_number.upper().split(':'))
