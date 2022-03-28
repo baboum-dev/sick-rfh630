@@ -105,6 +105,8 @@ class RFH630():
                     
 
                 })
+        if tags and tags[0]['error'] == 22:
+            tags = []
         logger.debug(pformat(tags, True))
         return tags
 

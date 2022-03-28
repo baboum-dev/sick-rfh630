@@ -5,5 +5,5 @@ setuptools.setup(
     author="Hadrien Huvelle", 
     description="Lib to use Sick RFH 6320 from python", 
     packages=["SickRFH630"],
-    install_requires=["coloredlogs", "six"]
+    install_requires=["coloredlogs", "six", "ndef"]
 )
