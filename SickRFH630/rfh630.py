@@ -127,27 +127,26 @@ class RFH630():
 
         hex_payload = " ".join([convertToHexString(x) for x in msg[start_index: end_index]])
 
-        tag = {
-            'error': msg[0],
-            'leng' : msg[1],
-            'index_end': end_index,
-            'index_start': start_index,
-            'msg': ' '.join(msg[start_index: end_index]),
-            'hex_payload' : hex_payload,
-            'bytes_payload' : bytes.fromhex(hex_payload),
-            'payload': bytes.fromhex(hex_payload) #.decode().replace('\x00', '')
-        }
+        tag = {}
+        tag.update({'error': msg[0]})
+        tag.update({'leng' : msg[1]})
+        tag.update({'index_end': end_index})
+        tag.update({'index_start': start_index})
+        tag.update({'msg': ' '.join(msg[start_index: end_index])})
+        tag.update({'hex_payload' : hex_payload})
+        tag.update({'bytes_payload' : bytes.fromhex(hex_payload)})
+        tag.update({'payload': bytes.fromhex(hex_payload) }) #.decode().replace('\x00', '')
+
+        
         logger.debug(pformat(tag))
         return tag
 
 
 
-    def writeNdefTag(self, serial_number, ndef_message: bytes):
+    def writeNdefTag(self, serial_number, ndef_message: bytes, check_write=False):
         
         if len(ndef_message) > int('0xff',16):
             raise Exception()
-
-        tag_infos = self.getTagInfo(serial_number)
 
         magic_word = six.int2byte(0xE1)
         version_and_chmod = six.int2byte(0x40)
@@ -167,25 +166,29 @@ class RFH630():
 
         payload = capability_container+tlv+tlv_special_end
 
-        return self.writeTag(serial_number, payload, tag_infos)
+        return self.writeTag(serial_number, payload, check_write)
 
-    def writeTag(self, serial_number, payload, tag_infos=None):
-        
-        payload = [hex(x)[2:].upper() for x in payload]
-
+    def writeTag(self, serial_number, payload, check_write=False):
+        #payload_len = len(payload)
+        payload_hex = [hex(x)[2:].upper() for x in payload]
+        written_hex = []
         serial = ' '.join(serial_number.upper().split(':'))
 
-        if not tag_infos:
-            tag_infos = self.getTagInfo(serial_number)
+        tag_infos = self.getTagInfo(serial_number)
+        if int(tag_infos['error']) > 0 :
+            logger.error("Tag infos coul'd not be found. Error n° %s" % tag_infos['error'])
+            return False
         
         nb_bytes = convertToHexString(hex((int(tag_infos['bs'], 16)+1)))
         errors = []
         for i in range(int(tag_infos['nb_blocks'], 16)):
 
-            sub_string = payload[int(i*4):4*i+int(nb_bytes)]
+            sub_string = payload_hex[int(i*4):4*i+int(nb_bytes)]
+            
             while len(sub_string) < int(nb_bytes):
                 sub_string.append('00')
 
+            written_hex += sub_string
             start = convertToHexString(hex(i))
             end = convertToHexString(hex(0))
             
@@ -195,12 +198,22 @@ class RFH630():
             if not 'sAN WrtMltBlck 0' in msg:
                 errors.append({'=>':cmd, '<=': msg})
 
-        if len(errors) == 0:
-            return True
+        if not check_write:
+            if len(errors) == 0:
+                return True
+            else:
+                logger.error(errors)
+                return False
         else:
-            logger.error(errors)
-            return False
+            check = self.readTag(serial_number)
+            while len(payload) < len(check['bytes_payload']):
+                payload += b'\x00'
+            logger.debug("PAYLOAD ORIG : %s" % payload)
+            logger.debug("PAYLOAD CHECK: %s" % check['bytes_payload'])
+            #logger.debug("PAYLOAD ORIG : %s" % written_hex)
+            #logger.debug("PAYLOAD CHECK: %s" % check['msg'])
 
+            return payload == check['bytes_payload']
 
 
 
@@ -219,22 +232,25 @@ class RFH630():
         msg =  self.sendCmd('sMN CSGtTAGInf %s' % (serial) )
 
         msg = msg.replace('sAN CSGtTAGInf ', '').split(' ')
-        tag_info = {
-            'error': msg[0],
-            'serial': msg[1:9],
-            'dsfid_exists' : msg[9],
-            'dsfid': msg[10], #The Data storage format identifier. the implementation of this is up to the creator of the system. its basically a free byte that can be programmed and which is returned during Inventory and Get System Info commands which can tell you something that relates to your system. I have also seen this byte used as a counter or pointer.     
-            'afi_exists': msg[11],
-            'afi': msg[12], # Application Family Identifier
-            'nb_block_exists': msg[13],
-            'nb_blocks': msg[14], #+1
-            'bs_exists': msg[15],
-            'bs': msg[16], #+1
-            'icr_exist': msg[17],
-            'icr': msg[18],
-            
-        }
-        logger.info(tag_info)
+
+        tag_info = {}
+        try :
+        
+            tag_info.update({'error': msg[0]})
+            tag_info.update({'serial': msg[1:9]})
+            tag_info.update({'dsfid_exists' : msg[9]})
+            tag_info.update({'dsfid': msg[10]})  #The Data storage format identifier. the implementation of this is up to the creator of the system. its basically a free byte that can be programmed and which is returned during Inventory and Get System Info commands which can tell you something that relates to your system. I have also seen this byte used as a counter or pointer.    
+            tag_info.update({'afi_exists': msg[11]})
+            tag_info.update({'afi': msg[12]}) # Application Family Identifier
+            tag_info.update({'nb_block_exists': msg[13]})
+            tag_info.update({'nb_blocks': msg[14]}) #+1
+            tag_info.update({'bs_exists': msg[15]})
+            tag_info.update({'bs': msg[16]})  #+1
+            tag_info.update({'icr_exist': msg[17]})
+            tag_info.update({'icr': msg[18]})
+        except:
+            pass
+        
         return tag_info        
 
 class RFH630Manager(Thread):
@@ -281,12 +297,12 @@ if __name__ == "__main__":
 
     for tag in inv:
         
-        if rf.writeNdefTag(tag['serial'], payload):
+        if rf.writeNdefTag(tag['serial'], payload, check_write=True):
             logger.info("Writed successfully")
-            logger.info("=============OUTPUT=================")
-            content = rf.readTag(tag['serial'])
-            logger.info(pformat(content, True))
-            logger.info("====================================")
+            #logger.info("=============OUTPUT=================")
+            #content = rf.readTag(tag['serial'])
+            #logger.info(pformat(content, True))
+            #logger.info("====================================")
         else:
             logger.error("Could not write tag")
         
