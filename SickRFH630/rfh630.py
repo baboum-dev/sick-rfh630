@@ -2,18 +2,14 @@
 # vim: set fileencoding=utf-8 et sts=4 sw=4:
 from __future__ import absolute_import, division, print_function, unicode_literals
 from datetime import date, datetime
+from threading import Thread, Event, Lock 
 import six
 """
   RFID Sick RFH-630
 """
 
 from socket import socket, AF_INET, SOCK_STREAM
-from time import sleep
-from collections import namedtuple
-from itertools import groupby
-import math
-from threading import Thread, Event, Lock 
-
+from datetime import datetime
 import coloredlogs, logging
 logger = logging.getLogger(__name__)
 coloredlogs.install(logger=logger, isatty=True, level=logging.DEBUG)
@@ -36,9 +32,17 @@ class RFH630():
         self.socket.connect((host, port))
         self._reader = self.msg_generator()
         self.verbose=verbose
+        self.messages = []
 
     def __del__( self ):
         self.socket.close()
+
+    def _addMessage(self, type, message):
+        self.messages.append({
+            "timestamp": datetime.now(),
+            'type': type, 
+            'message': message
+        })
 
     def msg_generator(self):
         data=b''
@@ -102,12 +106,10 @@ class RFH630():
                     'error': error,
                     'rssi': rssi,
                     'dsfid': dsfid, 
-                    
-
                 })
         if tags and tags[0]['error'] == 22:
             tags = []
-        logger.debug(pformat(tags, True))
+        self._addMessage(logging.INFO, format(tags, True))
         return tags
 
     def readInput(self, index=1):
@@ -115,6 +117,7 @@ class RFH630():
         return "sAN mDIReadInput 1" in msg
 
     def setOutput(self, OutputIndex, OutputValue):
+        self._addMessage(logging.INFO, "Output %s set to %s" %(OutputIndex, OutputValue))
         return self.sendCmd('sMN mDOSetOutput %s %s' % (OutputIndex, OutputValue))        
 
     def readTag(self, serial_number):
@@ -137,8 +140,7 @@ class RFH630():
         tag.update({'bytes_payload' : bytes.fromhex(hex_payload)})
         tag.update({'payload': bytes.fromhex(hex_payload) }) #.decode().replace('\x00', '')
 
-        
-        logger.debug(pformat(tag))
+
         return tag
 
 
@@ -177,6 +179,7 @@ class RFH630():
         tag_infos = self.getTagInfo(serial_number)
         if int(tag_infos['error']) > 0 :
             logger.error("Tag infos coul'd not be found. Error n° %s" % tag_infos['error'])
+            self._addMessage(logging.ERROR, "Tag infos coul'd not be found. Error n° %s" % tag_infos['error'])
             return False
         
         nb_bytes = convertToHexString(hex((int(tag_infos['bs'], 16)+1)))
@@ -203,13 +206,14 @@ class RFH630():
                 return True
             else:
                 logger.error(errors)
+                self._addMessage(logging.ERROR, errors)
                 return False
         else:
             check = self.readTag(serial_number)
             while len(payload) < len(check['bytes_payload']):
                 payload += b'\x00'
-            logger.debug("PAYLOAD ORIG : %s" % payload)
-            logger.debug("PAYLOAD CHECK: %s" % check['bytes_payload'])
+            #logger.debug("PAYLOAD ORIG : %s" % payload)
+            #logger.debug("PAYLOAD CHECK: %s" % check['bytes_payload'])
             #logger.debug("PAYLOAD ORIG : %s" % written_hex)
             #logger.debug("PAYLOAD CHECK: %s" % check['msg'])
 
